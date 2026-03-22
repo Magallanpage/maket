@@ -3,34 +3,537 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>마젤란 대시보드</title>
+  <title>항해자의 마켓 차트</title>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=IM+Fell+English:ital@0;1&family=Noto+Sans+KR:wght@300;400;500&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
-  
-  <!-- 기존 스타일 전체 유지 (당신의 원본 CSS를 그대로 여기에 붙여넣으세요) -->
+ 
   <style>
-    /* ... paste your full original CSS here ... */
-    /* 예: :root { --bg: #0e0b07; ... } 등 */
+    :root {
+      --bg:        #0e0b07;
+      --parch:     #13100a;
+      --surface:   #1a1510;
+      --surface2:  #221c14;
+      --surface3:  #2a2318;
+      --border:    #3a2e1e;
+      --border2:   #4d3e28;
+      --gold:      #c8922a;
+      --gold2:     #e8b84b;
+      --gold-dim:  #7a5518;
+      --cream:     #d4c4a0;
+      --cream2:    #b8a882;
+      --muted:     #6a5a40;
+      --up:        #4a9e6a;
+      --down:      #c04040;
+      --up-glow:   rgba(74,158,106,0.2);
+      --down-glow: rgba(192,64,64,0.2);
+      --cinzel: 'Cinzel', serif;
+      --fell: 'IM Fell English', serif;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Noto Sans KR', sans-serif;
+    }
+ 
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+ 
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+ 
+    /* ── 배경: 고지도 격자 + 위도선 + 텍스처 비네트 ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        /* 세로 경도선 */
+        linear-gradient(rgba(200,146,42,0.06) 1px, transparent 1px),
+        /* 가로 위도선 */
+        linear-gradient(90deg, rgba(200,146,42,0.06) 1px, transparent 1px),
+        /* 대각 항로선 */
+        repeating-linear-gradient(
+          30deg,
+          transparent, transparent 120px,
+          rgba(200,146,42,0.015) 120px, rgba(200,146,42,0.015) 121px
+        ),
+        repeating-linear-gradient(
+          -30deg,
+          transparent, transparent 120px,
+          rgba(200,146,42,0.015) 120px, rgba(200,146,42,0.015) 121px
+        );
+      background-size: 60px 60px, 60px 60px, 100% 100%, 100% 100%;
+    }
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(200,146,42,0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 100% 40% at 0% 50%, rgba(139,90,40,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 100% 80%, rgba(100,60,20,0.1) 0%, transparent 60%),
+        /* 비네트 */
+        radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(5,3,1,0.7) 100%);
+      pointer-events: none;
+    }
+ 
+    .container {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 32px 28px 60px;
+      position: relative; z-index: 1;
+    }
+ 
+    /* ── 황금 구분선 ── */
+    .gold-rule {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold2), var(--gold), transparent);
+      opacity: 0.4;
+      margin: 0 0 36px;
+    }
+    .gold-rule.thin { opacity: 0.2; margin: 0 0 28px; }
+ 
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 0;
+      padding-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 20px;
+      position: relative;
+    }
+ 
+    /* 헤더 상단 장식선 */
+    header::before {
+      content: '';
+      position: absolute; top: -8px; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold2), var(--gold), transparent);
+      opacity: 0.5;
+    }
+ 
+    .logo { display: flex; align-items: center; gap: 18px; }
+ 
+    /* 나침반 아이콘 */
+    .compass-icon {
+      width: 52px; height: 52px; flex-shrink: 0; position: relative;
+    }
+    .compass-icon svg { width: 52px; height: 52px; animation: compassSpin 20s linear infinite; }
+    @keyframes compassSpin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    /* 나침반 바늘은 반대로 회전해서 고정 */
+    .compass-needle { animation: compassSpin 20s linear infinite reverse; transform-origin: 26px 26px; }
+ 
+    .logo-text { display: flex; flex-direction: column; gap: 4px; }
+    .logo-title {
+      font-family: var(--cinzel);
+      font-size: 22px; font-weight: 700;
+      color: var(--gold2);
+      letter-spacing: 0.12em;
+      line-height: 1;
+      text-shadow: 0 0 20px rgba(232,184,75,0.3);
+    }
+    .logo-subtitle {
+      font-family: var(--fell);
+      font-style: italic;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+ 
+    .header-right { display: flex; align-items: flex-end; flex-direction: column; gap: 10px; }
+ 
+    .live-badge {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono); font-size: 11px;
+      color: var(--up); letter-spacing: 0.12em;
+      border: 1px solid rgba(74,158,106,0.3);
+      padding: 5px 14px; border-radius: 2px;
+      background: rgba(74,158,106,0.06);
+    }
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--up);
+      box-shadow: 0 0 8px var(--up);
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%,100% { opacity:1; box-shadow:0 0 8px var(--up); }
+      50%      { opacity:0.4; box-shadow:none; }
+    }
+ 
+    .header-time {
+      text-align: right;
+    }
+    .time-main {
+      font-family: var(--mono); font-size: 22px;
+      color: var(--gold2); letter-spacing: 0.08em;
+      display: block; line-height: 1;
+    }
+    .time-sub {
+      font-family: var(--fell); font-style: italic;
+      font-size: 11px; color: var(--muted);
+      display: block; margin-top: 4px; letter-spacing: 0.05em;
+    }
+ 
+    /* ── SECTION HEADER ── */
+    .section-header {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 14px;
+    }
+    .section-label {
+      font-family: var(--cinzel);
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold);
+      white-space: nowrap;
+      display: flex; align-items: center; gap: 10px;
+    }
+    /* 앵커/나침반 소 아이콘 */
+    .section-label .s-deco {
+      width: 14px; height: 14px; opacity: 0.6;
+    }
+    .section-line {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, var(--border2), transparent);
+    }
+ 
+    /* ── CARDS (주식/코인) ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+ 
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px 18px 14px;
+      position: relative; overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(.2,.8,.3,1), border-color 0.2s, box-shadow 0.2s;
+    }
+ 
+    /* 모서리 장식 */
+    .card::before, .card::after {
+      content: ''; position: absolute;
+      width: 10px; height: 10px;
+      border-color: var(--gold-dim); border-style: solid;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .card::before { top: 4px; left: 4px; border-width: 1px 0 0 1px; }
+    .card::after  { bottom: 4px; right: 4px; border-width: 0 1px 1px 0; }
+    .card:hover::before, .card:hover::after { opacity: 1; }
+ 
+    .card:hover { transform: translateY(-3px); }
+    .card.up:hover  { border-color: rgba(74,158,106,0.5); box-shadow: 0 4px 24px var(--up-glow); }
+    .card.down:hover{ border-color: rgba(192,64,64,0.5);  box-shadow: 0 4px 24px var(--down-glow); }
+ 
+    /* 상단 컬러 라인 */
+    .card-top-line {
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      opacity: 0.5;
+    }
+    .card.up   .card-top-line { background: linear-gradient(90deg, transparent, var(--up), transparent); }
+    .card.down .card-top-line { background: linear-gradient(90deg, transparent, var(--down), transparent); }
+ 
+    .card-ticker {
+      font-family: var(--cinzel);
+      font-size: 10px; font-weight: 600;
+      color: var(--gold); letter-spacing: 0.2em;
+      margin-bottom: 2px;
+    }
+    .card-name {
+      font-family: var(--fell); font-style: italic;
+      font-size: 11px; color: var(--muted);
+      margin-bottom: 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .card-price {
+      font-family: var(--mono);
+      font-size: 19px; font-weight: 400;
+      color: var(--cream); margin-bottom: 8px;
+      letter-spacing: -0.3px; line-height: 1;
+    }
+    .card-change { display: flex; align-items: center; gap: 7px; }
+ 
+    .change-badge {
+      font-family: var(--mono); font-size: 11px;
+      padding: 2px 8px; border-radius: 2px;
+    }
+    .change-badge.up   { color: var(--up);   background: rgba(74,158,106,0.12);  border: 1px solid rgba(74,158,106,0.25); }
+    .change-badge.down { color: var(--down);  background: rgba(192,64,64,0.1);    border: 1px solid rgba(192,64,64,0.25); }
+ 
+    .change-abs { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+ 
+    .sparkline { position: absolute; bottom: 12px; right: 12px; opacity: 0.25; transition: opacity 0.2s; }
+    .card:hover .sparkline { opacity: 0.55; }
+    .sparkline path { fill: none; stroke-width: 1.5; }
+    .sparkline.up   path { stroke: var(--up); }
+    .sparkline.down path { stroke: var(--down); }
+ 
+    /* ── ECON CARDS ── */
+    .econ-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+ 
+    .econ-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px 18px;
+      display: flex; align-items: center; gap: 15px;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+    /* 왼쪽 항로 라인 */
+    .econ-card::before {
+      content: ''; position: absolute;
+      left: 0; top: 0; bottom: 0; width: 2px;
+      background: var(--border2); border-radius: 2px 0 0 2px;
+      transition: background 0.2s;
+    }
+    .econ-card:hover { transform: translateY(-2px); border-color: var(--border2); box-shadow: 0 4px 20px rgba(200,146,42,0.08); }
+    .econ-card:hover::before { background: var(--gold); }
+ 
+    .econ-icon {
+      width: 42px; height: 42px;
+      border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .econ-icon.blue  { background: rgba(60,120,200,0.1);  border-color: rgba(60,120,200,0.2); }
+    .econ-icon.gold  { background: rgba(200,146,42,0.1);  border-color: rgba(200,146,42,0.2); }
+    .econ-icon.green { background: rgba(74,158,106,0.1);  border-color: rgba(74,158,106,0.2); }
+    .econ-icon.red   { background: rgba(192,64,64,0.1);   border-color: rgba(192,64,64,0.2); }
+ 
+    .econ-label { font-family: var(--fell); font-style: italic; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .econ-value { font-family: var(--mono); font-size: 20px; color: var(--cream); letter-spacing: -0.3px; line-height: 1; }
+    .econ-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+ 
+    /* ── CHART AREA ── */
+    .chart-area {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 24px;
+      margin-bottom: 32px;
+      position: relative; overflow: hidden;
+    }
+    /* 상단 황금 테두리 */
+    .chart-area::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.4;
+    }
+ 
+    .chart-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+    }
+    .chart-title {
+      font-family: var(--cinzel);
+      font-size: 14px; font-weight: 600;
+      color: var(--gold2); letter-spacing: 0.1em;
+    }
+    .chart-subtitle {
+      font-family: var(--fell); font-style: italic;
+      font-size: 11px; color: var(--muted); margin-top: 2px;
+    }
+ 
+    .chart-tabs {
+      display: flex; gap: 3px;
+      background: var(--surface2);
+      padding: 3px; border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    .chart-tab {
+      font-family: var(--mono); font-size: 11px;
+      padding: 4px 14px; border-radius: 2px;
+      border: none; background: transparent;
+      color: var(--muted); cursor: pointer;
+      transition: all 0.15s; letter-spacing: 0.05em;
+    }
+    .chart-tab.active { background: var(--gold); color: #0e0b07; font-weight: 700; }
+    .chart-tab:hover:not(.active) { color: var(--gold2); }
+ 
+    .chart-wrap { position: relative; height: 230px; }
+ 
+    /* ── BOTTOM 3단 ── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    @media (max-width:900px) { .bottom-grid { grid-template-columns: 1fr; } }
+ 
+    .widget-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 22px 24px;
+      position: relative; overflow: hidden;
+    }
+    /* 모서리 나침반 장식 */
+    .widget-card::after {
+      content: '✦'; position: absolute;
+      bottom: 10px; right: 14px;
+      font-size: 18px; color: var(--border2); opacity: 0.5;
+      pointer-events: none;
+    }
+ 
+    .widget-title {
+      font-family: var(--cinzel);
+      font-size: 9px; font-weight: 600;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .widget-title::before {
+      content: ''; display: inline-block;
+      width: 2px; height: 10px;
+      background: var(--gold); border-radius: 1px;
+    }
+ 
+    /* 나침반 게이지 */
+    .compass-gauge-wrap {
+      width: 160px; height: 160px;
+      margin: 0 auto 12px;
+      position: relative;
+    }
+    .compass-gauge-wrap svg { width: 160px; height: 160px; }
+ 
+    .gauge-val {
+      font-family: var(--cinzel);
+      font-size: 34px; font-weight: 700;
+      display: block; text-align: center;
+      letter-spacing: -1px; margin-bottom: 4px;
+      text-shadow: 0 0 20px currentColor;
+    }
+    .gauge-label {
+      font-family: var(--fell); font-style: italic;
+      font-size: 14px; display: block; text-align: center;
+    }
+ 
+    /* 도미넌스 */
+    .dom-row { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+    .dom-name { font-family: var(--mono); font-size: 11px; color: var(--cream2); width: 36px; flex-shrink: 0; }
+    .dom-bar-bg { flex: 1; height: 5px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+    .dom-bar { height: 100%; border-radius: 2px; transition: width 1s ease; }
+    .dom-pct { font-family: var(--mono); font-size: 10px; color: var(--muted); width: 36px; text-align: right; flex-shrink: 0; }
+ 
+    /* 시장 요약 */
+    .summary-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 0; border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-key { font-family: var(--fell); font-style: italic; color: var(--muted); }
+    .summary-val { font-family: var(--mono); font-size: 12px; color: var(--cream); }
+ 
+    /* ── TICKER BAR ── */
+    .ticker-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 10px 0;
+      overflow: hidden;
+      position: relative;
+    }
+    /* 좌우 페이드 */
+    .ticker-bar::before, .ticker-bar::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 60px; z-index: 2;
+    }
+    .ticker-bar::before { left: 0;  background: linear-gradient(90deg, var(--surface), transparent); }
+    .ticker-bar::after  { right: 0; background: linear-gradient(-90deg, var(--surface), transparent); }
+ 
+    .ticker-inner {
+      display: flex; align-items: center;
+      white-space: nowrap;
+      animation: ticker 50s linear infinite;
+    }
+    @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+ 
+    .ticker-item {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); margin-right: 48px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ticker-sym {
+      color: var(--gold); font-weight: 700;
+      letter-spacing: 0.1em;
+    }
+    .ticker-sep {
+      color: var(--border2); margin: 0 12px;
+    }
+ 
+    /* ── 반응형 ── */
+    @media (max-width: 768px) { .cards-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 480px) { .cards-grid { grid-template-columns: 1fr; } }
+ 
+    /* ── 페이드인 ── */
+    .card, .econ-card, .widget-card, .chart-area {
+      animation: fadeUp 0.5s ease both;
+    }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(14px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
   </style>
 </head>
 <body>
 <div class="container">
-
-  <!-- HEADER 부분 (원본 그대로, logo-title만 MAGELLAN DASHBOARD 유지) -->
+ 
+  <!-- ════ HEADER ════ -->
   <header>
     <div class="logo">
+      <!-- 나침반 SVG -->
       <div class="compass-icon">
-        <!-- 원본 SVG 나침반 -->
         <svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- ... 원본 SVG 내용 ... -->
+          <!-- 외곽 링 -->
+          <circle cx="26" cy="26" r="24" stroke="#c8922a" stroke-width="1" opacity="0.6"/>
+          <circle cx="26" cy="26" r="20" stroke="#c8922a" stroke-width="0.5" opacity="0.3"/>
+          <!-- 눈금 -->
+          <line x1="26" y1="3"  x2="26" y2="7"  stroke="#c8922a" stroke-width="1.5" opacity="0.8"/>
+          <line x1="26" y1="45" x2="26" y2="49" stroke="#c8922a" stroke-width="1.5" opacity="0.8"/>
+          <line x1="3"  y1="26" x2="7"  y2="26" stroke="#c8922a" stroke-width="1.5" opacity="0.8"/>
+          <line x1="45" y1="26" x2="49" y2="26" stroke="#c8922a" stroke-width="1.5" opacity="0.8"/>
+          <!-- 중간 눈금 -->
+          <line x1="43" y1="9"  x2="41" y2="11" stroke="#c8922a" stroke-width="0.8" opacity="0.4"/>
+          <line x1="9"  y1="9"  x2="11" y2="11" stroke="#c8922a" stroke-width="0.8" opacity="0.4"/>
+          <line x1="43" y1="43" x2="41" y2="41" stroke="#c8922a" stroke-width="0.8" opacity="0.4"/>
+          <line x1="9"  y1="43" x2="11" y2="41" stroke="#c8922a" stroke-width="0.8" opacity="0.4"/>
+          <!-- 나침반 바늘 (반대 회전) -->
+          <g class="compass-needle">
+            <polygon points="26,8 28,26 26,24 24,26" fill="#c04040" opacity="0.9"/>
+            <polygon points="26,44 28,26 26,28 24,26" fill="#c8922a" opacity="0.7"/>
+          </g>
+          <circle cx="26" cy="26" r="2.5" fill="#e8b84b"/>
         </svg>
       </div>
+ 
       <div class="logo-text">
-        <div class="logo-title">MAGELLAN DASHBOARD</div>
-        <div class="logo-subtitle">마젤란 대시보드 — 시장의 바다를 항해하다</div>
+        <div class="logo-title">MAGELLAN CHART</div>
+        <div class="logo-subtitle">항해자의 시장 대항해 — Navigating the Market Seas</div>
       </div>
     </div>
-
+ 
     <div class="header-right">
       <div class="live-badge"><div class="live-dot"></div>LIVE SIGNAL</div>
       <div class="header-time">
@@ -40,49 +543,135 @@
       <span style="font-family:var(--mono);font-size:10px;color:var(--muted);" id="updateTime">—</span>
     </div>
   </header>
-
+ 
   <hr class="gold-rule">
-
-  <!-- 주요 지수 (현재는 static – API 연동 예시는 주석으로) -->
-  <div class="section-header"><span class="section-label">주요 지수</span><div class="section-line"></div></div>
+ 
+  <!-- ════ 주요 지수 ════ -->
+  <div class="section-header">
+    <span class="section-label">
+      <svg class="s-deco" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="7" r="6" stroke="#c8922a" stroke-width="1"/>
+        <line x1="7" y1="1" x2="7" y2="13" stroke="#c8922a" stroke-width="0.8"/>
+        <line x1="1" y1="7" x2="13" y2="7" stroke="#c8922a" stroke-width="0.8"/>
+      </svg>
+      주요 지수
+    </span>
+    <div class="section-line"></div>
+  </div>
   <div class="cards-grid" id="stockGrid"></div>
-
-  <!-- 암호화폐 -->
-  <div class="section-header"><span class="section-label">암호화폐</span><div class="section-line"></div></div>
+ 
+  <!-- ════ 암호화폐 ════ -->
+  <div class="section-header">
+    <span class="section-label">
+      <svg class="s-deco" viewBox="0 0 14 14" fill="none">
+        <polygon points="7,1 13,11 1,11" stroke="#c8922a" stroke-width="1" fill="none"/>
+        <line x1="7" y1="4" x2="7" y2="9" stroke="#c8922a" stroke-width="0.8"/>
+      </svg>
+      암호화폐
+    </span>
+    <div class="section-line"></div>
+  </div>
   <div class="cards-grid" id="cryptoGrid"></div>
-
-  <!-- 경제 지표 (static) -->
-  <div class="section-header"><span class="section-label">경제 지표</span><div class="section-line"></div></div>
+ 
+  <!-- ════ 경제 지표 ════ -->
+  <div class="section-header">
+    <span class="section-label">
+      <svg class="s-deco" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="1" width="12" height="12" rx="1" stroke="#c8922a" stroke-width="1"/>
+        <line x1="4" y1="7" x2="10" y2="7" stroke="#c8922a" stroke-width="0.8"/>
+        <line x1="7" y1="4" x2="7" y2="10" stroke="#c8922a" stroke-width="0.8"/>
+      </svg>
+      경제 지표
+    </span>
+    <div class="section-line"></div>
+  </div>
   <div class="econ-grid" id="econGrid"></div>
-
-  <!-- BTC 차트 영역 (원본 그대로) -->
-  <!-- ... chart-area 부분 그대로 ... -->
-
-  <!-- 하단 위젯들 -->
+ 
+  <!-- ════ BTC 차트 ════ -->
+  <div class="section-header">
+    <span class="section-label">
+      <svg class="s-deco" viewBox="0 0 14 14" fill="none">
+        <polyline points="1,11 5,5 8,8 13,2" stroke="#c8922a" stroke-width="1" fill="none"/>
+      </svg>
+      BTC 항로 추이
+    </span>
+    <div class="section-line"></div>
+  </div>
+  <div class="chart-area">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">Bitcoin / USD</div>
+        <div class="chart-subtitle">미지의 가격 바다를 항해하다</div>
+      </div>
+      <div class="chart-tabs">
+        <button class="chart-tab active" data-range="1D">1D</button>
+        <button class="chart-tab" data-range="1W">1W</button>
+        <button class="chart-tab" data-range="1M">1M</button>
+        <button class="chart-tab" data-range="3M">3M</button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="btcChart"></canvas></div>
+  </div>
+ 
+  <!-- ════ 하단 3단 ════ -->
   <div class="bottom-grid">
+    <!-- 나침반 게이지 -->
     <div class="widget-card" style="text-align:center;">
       <div class="widget-title">공포 &amp; 탐욕 나침반</div>
       <div class="compass-gauge-wrap">
-        <!-- 원본 SVG 게이지 -->
         <svg viewBox="0 0 160 90" xmlns="http://www.w3.org/2000/svg">
-          <!-- ... 원본 SVG 내용 ... -->
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#c04040"/>
+              <stop offset="30%"  stop-color="#c07a28"/>
+              <stop offset="50%"  stop-color="#c8c040"/>
+              <stop offset="70%"  stop-color="#80c040"/>
+              <stop offset="100%" stop-color="#4a9e6a"/>
+            </linearGradient>
+          </defs>
+          <!-- 배경 호 -->
+          <path d="M 12 80 A 68 68 0 0 1 148 80" fill="none" stroke="#2a2318" stroke-width="14" stroke-linecap="round"/>
+          <!-- 배경 눈금 -->
+          <path d="M 12 80 A 68 68 0 0 1 148 80" fill="none" stroke="#3a2e1e" stroke-width="14" stroke-linecap="round" stroke-dasharray="4 6" opacity="0.5"/>
+          <!-- 컬러 호 -->
+          <path id="gaugePath" d="M 12 80 A 68 68 0 0 1 148 80" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="0 214"/>
+          <!-- N/S 마커 -->
+          <text x="6"   y="84" font-family="'Cinzel',serif" font-size="8" fill="#c04040" opacity="0.8">공포</text>
+          <text x="118" y="84" font-family="'Cinzel',serif" font-size="8" fill="#4a9e6a" opacity="0.8">탐욕</text>
+          <!-- 바늘 -->
+          <line id="gaugeNeedle" x1="80" y1="80" x2="80" y2="18" stroke="#e8b84b" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="80" cy="80" r="5" fill="#e8b84b"/>
+          <circle cx="80" cy="80" r="2" fill="#0e0b07"/>
         </svg>
       </div>
-      <span class="gauge-val" id="fgVal" style="color:var(--muted)">—</span>
+      <span class="gauge-val" id="fgVal" style="color:var(--gold2)">—</span>
       <span class="gauge-label" id="fgLabel" style="color:var(--muted)">—</span>
     </div>
-
-    <!-- 도미넌스 & 시장 요약 (static 또는 나중에 API로 확장 가능) -->
-    <!-- ... -->
+ 
+    <!-- 도미넌스 -->
+    <div class="widget-card">
+      <div class="widget-title">암호화폐 도미넌스</div>
+      <div id="dominanceRows"></div>
+    </div>
+ 
+    <!-- 시장 요약 -->
+    <div class="widget-card">
+      <div class="widget-title">항해 일지 — 시장 요약</div>
+      <div id="marketSummary"></div>
+    </div>
   </div>
-
-  <!-- Ticker -->
-  <div class="ticker-bar"><div class="ticker-inner" id="tickerContent"></div></div>
-
-</div>
-
+ 
+  <!-- ════ TICKER ════ -->
+  <div class="ticker-bar">
+    <div class="ticker-inner" id="tickerContent"></div>
+  </div>
+ 
+</div><!-- /container -->
+ 
 <script>
-// ── 시계 & 헬퍼 함수 (원본 그대로) ────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// 시계
+// ═══════════════════════════════════════════════════
 function updateClock() {
   const now = new Date();
   document.getElementById('clockDisplay').textContent =
@@ -92,121 +681,389 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 updateClock();
-
+ 
+// ═══════════════════════════════════════════════════
+// 헬퍼
+// ═══════════════════════════════════════════════════
 function fmtPrice(p, isCrypto = false) {
+  if (p == null || isNaN(p)) return '--';
   if (!isCrypto) return p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   if (p >= 1000) return p.toLocaleString('en-US', {maximumFractionDigits:0});
   if (p >= 1)    return p.toFixed(2);
   return p.toFixed(4);
 }
-
-function genSpark(isUp) {
-  const pts = []; let y = isUp ? 22 : 6;
-  for (let x = 0; x <= 60; x += 10) {
-    y = Math.max(2, Math.min(26, y + (Math.random() - (isUp ? 0.38 : 0.62)) * 9));
-    pts.push(x + ',' + y);
-  }
-  return 'M' + pts.join(' L');
+ 
+function fmtLarge(n) {
+  if (!n || isNaN(n)) return '--';
+  if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
+  if (n >= 1e9)  return '$' + (n/1e9).toFixed(2)  + 'B';
+  if (n >= 1e6)  return '$' + (n/1e6).toFixed(2)  + 'M';
+  return '$' + n.toLocaleString();
 }
-
-// ── API 연동 ────────────────────────────────────────────────────────────────
-async function fetchCryptoData() {
-  try {
-    const ids = 'bitcoin,ethereum,binancecoin,solana,ripple,dogecoin';
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('CoinGecko 응답 오류');
-    const data = await res.json();
-
-    const CRYPTOS = [
-      {ticker:'BTC',  name:'비트코인',     price: data.bitcoin?.usd       ?? 0, chg: data.bitcoin?.usd_24h_change     ?? 0, abs: 0},
-      {ticker:'ETH',  name:'이더리움',     price: data.ethereum?.usd      ?? 0, chg: data.ethereum?.usd_24h_change    ?? 0, abs: 0},
-      {ticker:'BNB',  name:'바이낸스코인', price: data.binancecoin?.usd   ?? 0, chg: data.binancecoin?.usd_24h_change ?? 0, abs: 0},
-      {ticker:'SOL',  name:'솔라나',       price: data.solana?.usd        ?? 0, chg: data.solana?.usd_24h_change     ?? 0, abs: 0},
-      {ticker:'XRP',  name:'리플',         price: data.ripple?.usd        ?? 0, chg: data.ripple?.usd_24h_change     ?? 0, abs: 0},
-      {ticker:'DOGE', name:'도지코인',     price: data.dogecoin?.usd      ?? 0, chg: data.dogecoin?.usd_24h_change   ?? 0, abs: 0},
-    ];
-
-    // 절대 변화액 임의 계산 (실제로는 24h volume이나 prev price 필요하지만 근사치)
-    CRYPTOS.forEach(c => {
-      c.abs = Math.abs((c.price * c.chg / 100).toFixed(c.price > 10 ? 0 : 2));
-    });
-
-    renderCards(CRYPTOS, 'cryptoGrid', true);
-
-    // 티커도 업데이트
-    updateTicker([...CRYPTOS]); // stocks는 static이라 생략하거나 합침
-  } catch (err) {
-    console.error('Crypto API 오류:', err);
-    document.getElementById('cryptoGrid').innerHTML = '<div style="color:var(--down);padding:20px;">데이터 로드 실패</div>';
-  }
+ 
+function genSpark(prices) {
+  // 실제 prices 배열(최근 24개)로 스파크라인 생성
+  if (!prices || prices.length < 2) return '';
+  const valid = prices.filter(Boolean);
+  const min = Math.min(...valid), max = Math.max(...valid);
+  const range = max - min || 1;
+  const W = 60, H = 26;
+  const pts = valid.map((p, i) => {
+    const x = (i / (valid.length - 1)) * W;
+    const y = H - ((p - min) / range) * H;
+    return `${x},${y}`;
+  }).join(' L');
+  return 'M' + pts;
 }
-
-async function fetchFearGreed() {
-  try {
-    const res = await fetch('https://api.alternative.me/fng/?limit=1');
-    const {data} = await res.json();
-    const val = parseInt(data[0].value, 10);
-    initGauge(val);
-  } catch (err) {
-    console.error('F&G API 오류:', err);
-    initGauge(50); // fallback
-  }
+ 
+function setLoading(id, msg = '항해 중...') {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:20px;text-align:center;">${msg}</div>`;
 }
-
-// ── Static 데이터 (주식 & 경제) ─────────────────────────────────────────────
-const STOCKS = [
-  {ticker:'S&P500',  name:'S&P 500',     price:6506.48, chg:-1.51, abs:100.0 },
-  {ticker:'NASDAQ',  name:'나스닥 종합',   price:21647,  chg:-2.0,  abs:443  },
-  {ticker:'DOW',     name:'다우 존스',     price:45577,   chg:-1.0,  abs:444  },
-  {ticker:'KOSPI',   name:'코스피',        price:2781,    chg:0.45,  abs:12   },
-  // ... 필요시 추가
-];
-
-const ECON = [
-  // ... 원본 ECON 배열 그대로 ...
-];
-
-// ── 렌더 함수들 (원본과 동일 – renderCards, renderEcon, initGauge, renderDominance 등) ──
-// ... paste your original render functions here ...
-
-// ── Ticker 업데이트 (crypto 중심으로) ───────────────────────────────────────
-function updateTicker(cryptos) {
-  const items = cryptos.map(c => `
-    <span class="ticker-item">
+ 
+// ═══════════════════════════════════════════════════
+// 렌더 함수들
+// ═══════════════════════════════════════════════════
+function renderCards(data, containerId, isCrypto = false) {
+  const html = data.map((d, i) => {
+    const isUp = d.chg >= 0;
+    const cls  = isUp ? 'up' : 'down';
+    const sign = isUp ? '+' : '';
+    const sparkPath = d.sparkPrices ? genSpark(d.sparkPrices) : '';
+    return `
+      <div class="card ${cls}" style="animation-delay:${i*0.06}s">
+        <div class="card-top-line"></div>
+        <div class="card-ticker">${d.ticker}</div>
+        <div class="card-name">${d.name}</div>
+        <div class="card-price">${isCrypto ? '$' : ''}${fmtPrice(d.price, isCrypto)}</div>
+        <div class="card-change">
+          <span class="change-badge ${cls}">${sign}${d.chg.toFixed(2)}%</span>
+          <span class="change-abs">${sign}${isCrypto?'$':''}${Math.abs(d.abs).toLocaleString(undefined,{maximumFractionDigits:2})}</span>
+        </div>
+        ${sparkPath ? `<svg class="sparkline ${cls}" width="60" height="28" viewBox="0 0 60 28"><path d="${sparkPath}"/></svg>` : ''}
+      </div>`;
+  }).join('');
+  document.getElementById(containerId).innerHTML = html;
+}
+ 
+function renderEcon(items) {
+  document.getElementById('econGrid').innerHTML = items.map(d => `
+    <div class="econ-card">
+      <div class="econ-icon ${d.cls}">${d.icon}</div>
+      <div>
+        <div class="econ-label">${d.label}</div>
+        <div class="econ-value">${d.value}</div>
+        <div class="econ-sub">${d.sub}</div>
+      </div>
+    </div>`).join('');
+}
+ 
+function renderDominance(doms) {
+  document.getElementById('dominanceRows').innerHTML = doms.map(d => `
+    <div class="dom-row">
+      <span class="dom-name">${d.name}</span>
+      <div class="dom-bar-bg">
+        <div class="dom-bar" style="width:${Math.min(d.pct,100)}%;background:${d.color};"></div>
+      </div>
+      <span class="dom-pct">${d.pct.toFixed(1)}%</span>
+    </div>`).join('');
+}
+ 
+function renderSummary(rows) {
+  document.getElementById('marketSummary').innerHTML = rows.map(([k,v]) => `
+    <div class="summary-row">
+      <span class="summary-key">${k}</span>
+      <span class="summary-val">${v}</span>
+    </div>`).join('');
+}
+ 
+function renderTicker(stocks, cryptos) {
+  const all = [...stocks, ...cryptos];
+  const items = all.map(c =>
+    `<span class="ticker-item">
       <span class="ticker-sym">${c.ticker}</span>
       ${fmtPrice(c.price, true)}
       <span style="color:${c.chg>=0?'var(--up)':'var(--down)'}">${c.chg>=0?'+':''}${c.chg.toFixed(2)}%</span>
-    </span>
-    <span class="ticker-sep">✦</span>
-  `).join('');
+     </span>
+     <span class="ticker-sep">✦</span>`
+  ).join('');
   document.getElementById('tickerContent').innerHTML = items + items;
 }
-
-// ── 초기화 & 자동 갱신 ──────────────────────────────────────────────────────
-async function initDashboard() {
-  renderCards(STOCKS, 'stockGrid', false);
-  renderEcon();
-  renderDominance();
-  renderSummary();
-  createChart('1D');
-  updateLastUpdate();
-
-  // API 데이터 로드
-  await Promise.all([
-    fetchCryptoData(),
-    fetchFearGreed()
-  ]);
-
-  // 5분마다 crypto & F&G 갱신
-  setInterval(() => {
-    fetchCryptoData();
-    fetchFearGreed();
-    updateLastUpdate();
-  }, 5 * 60 * 1000);
+ 
+// ── 나침반 게이지 ──────────────────────────────────
+function setGauge(val) {
+  val = Math.max(0, Math.min(100, val));
+  const len = (val / 100) * 214;
+  document.getElementById('gaugePath').setAttribute('stroke-dasharray', `${len} 214`);
+  const rad = (-Math.PI + (val / 100) * Math.PI);
+  const x2 = 80 + 56 * Math.cos(rad);
+  const y2 = 80 + 56 * Math.sin(rad);
+  document.getElementById('gaugeNeedle').setAttribute('x2', x2.toFixed(1));
+  document.getElementById('gaugeNeedle').setAttribute('y2', y2.toFixed(1));
+  const colors = ['#c04040','#c07a28','#b8b828','#80c040','#4a9e6a'];
+  const labels = ['극단적 공포','공포','중립','탐욕','극단적 탐욕'];
+  const idx = Math.min(Math.floor(val / 25), 4);
+  document.getElementById('fgVal').style.color   = colors[idx];
+  document.getElementById('fgLabel').style.color = colors[idx];
+  document.getElementById('fgVal').textContent   = val;
+  document.getElementById('fgLabel').textContent = labels[idx];
 }
-
-window.addEventListener('load', initDashboard);
+ 
+// ═══════════════════════════════════════════════════
+// Chart.js — 실제 CoinGecko 시계열
+// ═══════════════════════════════════════════════════
+let btcChart = null;
+let btcChartData = {}; // range → prices 캐시
+ 
+async function fetchBtcHistory(range) {
+  if (btcChartData[range]) return btcChartData[range];
+  const days = range==='1D'?1 : range==='1W'?7 : range==='1M'?30 : 90;
+  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  const prices = (d.prices || []).map(p => p[1]);
+  const labels = (d.prices || []).map(p => {
+    const dt = new Date(p[0]);
+    return days <= 1
+      ? dt.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})
+      : dt.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
+  });
+  btcChartData[range] = {prices, labels};
+  return btcChartData[range];
+}
+ 
+async function createChart(range = '1D') {
+  const ctx = document.getElementById('btcChart').getContext('2d');
+  let prices = [], labels = [];
+  try {
+    const d = await fetchBtcHistory(range);
+    prices = d.prices; labels = d.labels;
+  } catch {
+    const n = range==='1D'?24:range==='1W'?7:range==='1M'?30:90;
+    prices = Array.from({length:n},()=>82000+Math.random()*8000);
+    labels = Array.from({length:n},(_,i)=>i+1+'');
+  }
+  if (btcChart) btcChart.destroy();
+  btcChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'BTC/USD',
+        data: prices,
+        borderColor:'#c8922a',
+        backgroundColor:(ctx2)=>{
+          const g = ctx2.chart.ctx.createLinearGradient(0,0,0,230);
+          g.addColorStop(0,'rgba(200,146,42,0.2)');
+          g.addColorStop(1,'rgba(200,146,42,0.00)');
+          return g;
+        },
+        tension:0.3, borderWidth:2, pointRadius:0, fill:true,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{ display:true, ticks:{ color:'#6a5a40', maxTicksLimit:6, font:{family:'Share Tech Mono',size:9} }, grid:{display:false} },
+        y:{ display:true, grid:{color:'rgba(58,46,30,0.5)'}, ticks:{color:'#6a5a40', font:{family:'Share Tech Mono',size:10}, callback:v=>'$'+v.toLocaleString()} }
+      },
+      plugins:{ legend:{display:false}, tooltip:{
+        backgroundColor:'rgba(26,21,16,0.95)',
+        borderColor:'#3a2e1e', borderWidth:1,
+        titleColor:'#c8922a', bodyColor:'#d4c4a0',
+        titleFont:{family:'Share Tech Mono'}, bodyFont:{family:'Share Tech Mono'},
+        callbacks:{ label: ctx => ' $' + ctx.parsed.y.toLocaleString('en-US',{maximumFractionDigits:0}) }
+      }}
+    }
+  });
+}
+ 
+// ═══════════════════════════════════════════════════
+// API 호출
+// ═══════════════════════════════════════════════════
+ 
+// ── 1. 암호화폐 (CoinGecko 무료 API) ──────────────
+async function fetchCrypto() {
+  const ids = 'bitcoin,ethereum,binancecoin,solana,ripple,dogecoin';
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+  const res = await fetch(url);
+  const data = await res.json();
+ 
+  const nameMap = {bitcoin:'비트코인', ethereum:'이더리움', binancecoin:'바이낸스코인', solana:'솔라나', ripple:'리플', dogecoin:'도지코인'};
+  const tickMap = {bitcoin:'BTC', ethereum:'ETH', binancecoin:'BNB', solana:'SOL', ripple:'XRP', dogecoin:'DOGE'};
+ 
+  const cryptos = data.map(c => ({
+    ticker: tickMap[c.id] || c.symbol.toUpperCase(),
+    name:   nameMap[c.id] || c.name,
+    price:  c.current_price,
+    chg:    c.price_change_percentage_24h ?? 0,
+    abs:    c.price_change_24h ?? 0,
+    sparkPrices: c.sparkline_in_7d?.price?.slice(-24) ?? [],
+    marketCap: c.market_cap,
+    high24: c.high_24h,
+    low24:  c.low_24h,
+    totalVol: c.total_volume,
+  }));
+ 
+  renderCards(cryptos, 'cryptoGrid', true);
+ 
+  // 도미넌스 — 시가총액 기반 계산
+  const total = data.reduce((s,c) => s + (c.market_cap||0), 0);
+  const domColors = {bitcoin:'#f7931a', ethereum:'#627eea', binancecoin:'#c8922a', solana:'#4a9e6a', ripple:'#346aa9', dogecoin:'#c2a633'};
+  const doms = data.map(c => ({
+    name: tickMap[c.id],
+    pct:  total ? (c.market_cap / total * 100) : 0,
+    color: domColors[c.id] || '#6a6a6a',
+  }));
+  const otherPct = Math.max(0, 100 - doms.reduce((s,d)=>s+d.pct, 0));
+  renderDominance([...doms, {name:'기타', pct:otherPct, color:'#4a5a40'}]);
+ 
+  // 시장 요약
+  const btc = data.find(c=>c.id==='bitcoin') || {};
+  const upCount  = data.filter(c=>(c.price_change_percentage_24h??0)>=0).length;
+  const downCount = data.length - upCount;
+  renderSummary([
+    ['글로벌 암호화폐 시총', fmtLarge(total)],
+    ['BTC 24h 거래량',       fmtLarge(btc.total_volume)],
+    ['BTC 24h 고점',         '$'+(btc.high_24h||'--').toLocaleString()],
+    ['BTC 24h 저점',         '$'+(btc.low_24h||'--').toLocaleString()],
+    ['24h 상승',             upCount + '개 ↑'],
+    ['24h 하락',             downCount + '개 ↓'],
+  ]);
+ 
+  return cryptos;
+}
+ 
+// ── 2. 주식 지수 (Yahoo Finance via allorigins proxy) ──
+async function fetchQuote(symbol) {
+  const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`;
+  const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+  const r = await fetch(proxy);
+  const outer = await r.json();
+  const json  = JSON.parse(outer.contents);
+  const result= json.chart.result[0];
+  const meta  = result.meta;
+  const closes= (result.indicators.quote[0].close || []).filter(Boolean);
+  const price = meta.regularMarketPrice;
+  const prev  = meta.chartPreviousClose || closes[closes.length-2] || price;
+  const chg   = ((price - prev) / prev) * 100;
+  const abs   = price - prev;
+  return { price, chg, abs, sparkPrices: closes };
+}
+ 
+async function fetchStocks() {
+  const defs = [
+    {sym:'^GSPC',  ticker:'S&P500', name:'S&P 500'},
+    {sym:'^IXIC',  ticker:'NASDAQ', name:'나스닥 종합'},
+    {sym:'^DJI',   ticker:'DOW',    name:'다우 존스'},
+    {sym:'^KS11',  ticker:'KOSPI',  name:'코스피'},
+    {sym:'^KQ11',  ticker:'KOSDAQ', name:'코스닥'},
+    {sym:'^N225',  ticker:'NIKKEI', name:'닛케이 225'},
+  ];
+ 
+  const results = await Promise.allSettled(defs.map(d => fetchQuote(d.sym)));
+  const stocks = defs.map((d, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      return { ...d, ...r.value };
+    }
+    return { ...d, price:0, chg:0, abs:0, sparkPrices:[] };
+  });
+ 
+  renderCards(stocks, 'stockGrid', false);
+  return stocks;
+}
+ 
+// ── 3. 환율 + 원자재 (Yahoo Finance proxy) ────────
+async function fetchEcon() {
+  const pairs = [
+    {sym:'KRW=X',    label:'USD/KRW 환율',  icon:'💵', cls:'blue',  fmt: v=>`${v.toLocaleString('ko-KR',{minimumFractionDigits:2})} ₩`},
+    {sym:'GC=F',     label:'금 현물가',      icon:'🥇', cls:'gold',  fmt: v=>`$${v.toLocaleString('en-US',{maximumFractionDigits:0})}`},
+    {sym:'CL=F',     label:'WTI 원유',       icon:'🛢️', cls:'gold',  fmt: v=>`$${v.toFixed(2)}`},
+    {sym:'JPY=X',    label:'USD/JPY 환율',   icon:'🇯🇵', cls:'blue',  fmt: v=>v.toFixed(2)},
+    {sym:'EURUSD=X', label:'EUR/USD',         icon:'🇪🇺', cls:'green', fmt: v=>v.toFixed(4)},
+    {sym:'^TNX',     label:'미 국채 10년',   icon:'🏦', cls:'red',   fmt: v=>v.toFixed(3)+'%'},
+  ];
+ 
+  const results = await Promise.allSettled(pairs.map(p => fetchQuote(p.sym)));
+  const items = pairs.map((p, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      const {price, chg, abs} = r.value;
+      const arrow = chg >= 0 ? '▲' : '▼';
+      const sub = `전일 대비 ${arrow}${Math.abs(abs).toFixed(2)} (${chg>=0?'+':''}${chg.toFixed(2)}%)`;
+      return { label:p.label, value:p.fmt(price), sub, icon:p.icon, cls:p.cls };
+    }
+    return { label:p.label, value:'--', sub:'데이터 없음', icon:p.icon, cls:p.cls };
+  });
+ 
+  renderEcon(items);
+}
+ 
+// ── 4. 공포 & 탐욕 (alternative.me) ───────────────
+async function fetchFearGreed() {
+  const r = await fetch('https://api.alternative.me/fng/?limit=1');
+  const d = await r.json();
+  const val = parseInt(d.data[0].value);
+  setGauge(val);
+}
+ 
+// ═══════════════════════════════════════════════════
+// 업데이트 타임스탬프
+// ═══════════════════════════════════════════════════
+function setLastUpdate() {
+  document.getElementById('updateTime').textContent =
+    '최종 관측: ' + new Date().toLocaleTimeString('ko-KR', {hour12:false});
+}
+ 
+// ═══════════════════════════════════════════════════
+// 전체 데이터 새로고침
+// ═══════════════════════════════════════════════════
+async function fetchAll() {
+  setLastUpdate();
+  try {
+    const [cryptos, stocks] = await Promise.all([
+      fetchCrypto().catch(e => { console.warn('crypto fail', e); return []; }),
+      fetchStocks().catch(e => { console.warn('stocks fail', e); return []; }),
+      fetchEcon().catch(e => console.warn('econ fail', e)),
+      fetchFearGreed().catch(e => console.warn('fg fail', e)),
+    ]);
+    renderTicker(stocks, cryptos);
+  } catch(e) {
+    console.error('fetchAll error', e);
+  }
+  setLastUpdate();
+}
+ 
+// ═══════════════════════════════════════════════════
+// 초기화
+// ═══════════════════════════════════════════════════
+async function init() {
+  // 로딩 표시
+  setLoading('stockGrid',  '주요 지수 항로 탐색 중...');
+  setLoading('cryptoGrid', '암호화폐 해도 탐색 중...');
+  setLoading('econGrid',   '경제 나침반 보정 중...');
+ 
+  // 데이터 로드
+  await fetchAll();
+ 
+  // BTC 차트 (실시간)
+  await createChart('1D');
+ 
+  // 차트 탭
+  document.querySelectorAll('.chart-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chart-tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      createChart(btn.dataset.range);
+    });
+  });
+ 
+  // 3분마다 자동 갱신
+  setInterval(fetchAll, 3 * 60 * 1000);
+}
+ 
+window.addEventListener('load', init);
 </script>
 </body>
 </html>
